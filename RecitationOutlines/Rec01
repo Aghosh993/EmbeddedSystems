@@ -1,0 +1,12 @@
+- Intro to Embedded Systems. Embedded vs. standard PC environment. Brush over real-time vs. non-realtime. Limitations, et. al.
+- The compilation process - Again, brush over some minor differences between embedded systems vs. normal.
+- C: The good, the bad and the ugly
+- Hello world -> Show general structure of a C program and explain line by line in basic terms
+- Primitives -> data types, representations
+- Casting
+- Arithmetic operations
+- Control flow(if, if/else, else/if, switch), loops (for, while, do, )
+- Arrays, pointer math
+- Bitwise operations, brief review of binary math/representation
+- Enumerated types
+- Structs, unions
