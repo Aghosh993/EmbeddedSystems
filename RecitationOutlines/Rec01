@@ -3,9 +3,11 @@
 - C: The good, the bad and the ugly
 - Hello world -> Show general structure of a C program and explain line by line in basic terms
 - Primitives -> data types, representations
+- Variable scope: local, global, static
 - Casting
 - Arithmetic operations
-- Control flow(if, if/else, else/if, switch), loops (for, while, do, )
+- Control flow(if, if/else, else/if, switch, for), loops (for, while, do, goto)
+	-> pre vs. post-increment
 - Arrays, pointer math
 - Bitwise operations, brief review of binary math/representation
 - Enumerated types
