@@ -12,3 +12,4 @@
 - Bitwise operations, brief review of binary math/representation
 - Enumerated types
 - Structs, unions
+- Headers, inclusion guards
