@@ -1,3 +1,3 @@
 # EmbeddedSystems
-Embedded Systems example code, Fall 2016
+Embedded Systems example code and presentations, Fall 2016
 Abhimanyu Ghosh
