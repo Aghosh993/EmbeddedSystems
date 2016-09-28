@@ -1,3 +1,3 @@
 # EmbeddedSystems
 Embedded Systems example code and presentations, Fall 2016
-Abhimanyu Ghosh
+(c) Abhimanyu Ghosh, NYU Tandon School of Engineering
