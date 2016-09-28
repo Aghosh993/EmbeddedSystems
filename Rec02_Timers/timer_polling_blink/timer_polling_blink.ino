@@ -1,4 +1,4 @@
-// This sketch utilizes the Compare Channel A interrupt to 
+// This sketch utilizes the Compare Channel A in polling mode to 
 // blink an LED at 2 kHz (i.e. with a net waveform period of 1 ms)
 
 // Function to initialize PORTB Pin 5 (i.e. Arduino Digital pin 13)
@@ -6,16 +6,12 @@
 
 void gpio_init(void)
 {
-  DDRB |= _BV(5);
+  DDRB |= _BV(5); // Set PORTB Pin 5 (i.e. Digital pin 13) to OUTPUT
 }
 void setup() {
-  // Disable all interrupts while we perform configuration:
   cli();
-  
+  // put your setup code here, to run once:
   gpio_init(); // Initialize I/O line(s)
-
-  // Initialize timer 1 control registers to known state
-  // AKA pretend Atmel's datasheet is lying to us...
   
   TCCR1A = 0;
   TCCR1B = 0;
@@ -27,22 +23,14 @@ void setup() {
 
   TCCR1B = 1<<CS11 | 1<<CS10 | 1<<WGM12;
   OCR1A = 124;
-
-  // Enable the compare match on channel A interrupt for Timer 1
-  TIMSK1 |= _BV(OCIE1A);
-
-  // Enable all interrupts and move on to loop:
-  sei();
 }
 
 void loop() {
-  // Do absolutely nothing here... :)
+  // put your main code here, to run repeatedly:
+  // If we have a compare match on A (OCR1A), toggle Pin 13:
+  if(TIFR1 & _BV(OCF1A))
+  {
+    TIFR1 |= _BV(OCF1A);
+    PORTB ^= _BV(5);
+  }
 }
-
-ISR(TIMER1_COMPA_vect)
-{
-  // Toggle PORTB Pin 5 i.e. Digital Pin 13 here:
-  PORTB ^= _BV(5);
-  // Do other important stuff.. steer the missile or something:
-}
-
