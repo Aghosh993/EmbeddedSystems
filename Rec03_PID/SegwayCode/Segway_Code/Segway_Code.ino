@@ -11,7 +11,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 //#define RUNTIME_VERBOSE_OUTPUT  1
-#define CONTROL_DT 0.004 // In seconds
+#define CONTROL_DT 0.01 // In seconds
 
 ////////////////////////////////////////////////////////////////////////////////
 /*
@@ -48,9 +48,9 @@ void init_timer0_timebase()
 {
   TCCR2A = (1<<WGM21);  // We don't want any connection to the OC0A or OC0B pins
                         // CTC mode. Compare on OCR2A
-  TCCR2B = (1<<CS22) | (1<<CS21) | (0<<CS20); // Prescaler=256
+  TCCR2B = (1<<CS22) | (1<<CS21) | (1<<CS20); // Prescaler=1024
 
-  OCR2A = 124;
+  OCR2A = 156;
 
   TIMSK2 |= (1<<OCIE2A);  
 }
@@ -139,6 +139,9 @@ Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0(1000);  // Use I2C, ID #1000
 sensors_event_t accel, mag, gyro, temp;
 
 volatile uint8_t get_data;
+volatile float angle;
+
+volatile uint8_t debug_ticks;
 
 void configureSensor(void)
 {
@@ -184,6 +187,8 @@ void setup() {
   cli(); // Globally disable interrupts on the AVR
 
   get_data = 0U;
+  angle = 0.0f;
+  debug_ticks = 0U;
   
   Serial.begin(9600);
   
@@ -211,6 +216,29 @@ void loop() {
       get_data = 0U;
       PORTB ^= (1<<0);
     }
+
+  float a_accel = (float)57.30*accel.acceleration.y/(float)9.810;
+  angle = (float)0.98*(angle + ((float)CONTROL_DT*gyro.gyro.z)) + (float)0.02*a_accel;
+  int16_t motor_drive_val = (int16_t)((float)50.0 * angle);
+
+  if(motor_drive_val < 0)
+  {
+    motor_drive_val *= -1;
+    drive_motors(motor_drive_val, DIR_FWD,
+                  motor_drive_val, DIR_FWD);
+  }
+  else
+  {
+    drive_motors(motor_drive_val, DIR_REV,
+                  motor_drive_val, DIR_REV);    
+  }
+
+  if(debug_ticks > 9U)
+  {
+    Serial.println(angle);
+    debug_ticks = 0U;
+  }
+    
   #ifdef RUNTIME_VERBOSE_OUTPUT
   
     // print out accelleration data
@@ -240,6 +268,7 @@ void loop() {
 ISR(TIMER2_COMPA_vect)
 {
   get_data = 1U;
+  debug_ticks += 1U;
 //  PORTB ^= (1<<0);
 }
 
