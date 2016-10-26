@@ -11,7 +11,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 //#define RUNTIME_VERBOSE_OUTPUT_1  1
-//#define RUNTIME_VERBOSE_OUTPUT_2  1
+//#define RUNTIME_VERBOSE_OUTPUT_2  1/
 
 #define CONTROL_DT 0.01 // In seconds
 
@@ -143,6 +143,7 @@ sensors_event_t accel, mag, gyro, temp;
 volatile uint8_t get_data;
 volatile float angle;
 volatile float prev_accel;
+volatile float angle_err_integral;
 
 volatile uint8_t debug_ticks;
 
@@ -180,6 +181,27 @@ int init_imu(void)
   return 0;
 }
 
+void send_binary_telemetry_item(float value)
+{
+  union {
+    float input;
+    uint8_t output[sizeof(float)];
+  } float_to_bytes;
+  float_to_bytes.input = value;
+  Serial.write((uint8_t)'s');
+  Serial.write((uint8_t)0U);
+  Serial.write((uint8_t)4U);
+  uint8_t i = 0U;
+  uint8_t chksum = 0U;
+  for(i = 0; i < sizeof(float); ++i)
+  {
+   Serial.write(float_to_bytes.output[i]); 
+   chksum += float_to_bytes.output[i];
+  }
+  chksum += 0x75;
+  Serial.write(chksum);  
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /*
  * End of supporting functions and declarations... BEGIN USER APP:
@@ -196,6 +218,7 @@ void setup() {
   angle = 0.0f;
   debug_ticks = 0U;
   prev_accel = 0.0f;
+  angle_err_integral = 0.0f;
 
   // Start Serial Port comms at 115200 baud, with default 8n1 mode:
   Serial.begin(115200);
@@ -223,27 +246,6 @@ void setup() {
   Wire.setClock(400000L);
 }
 
-void send_binary_telemetry_item(float value)
-{
-  union {
-    float input;
-    uint8_t output[sizeof(float)];
-  } float_to_bytes;
-  float_to_bytes.input = value;
-  Serial.write((uint8_t)'s');
-  Serial.write((uint8_t)0U);
-  Serial.write((uint8_t)4U);
-  uint8_t i = 0U;
-  uint8_t chksum = 0U;
-  for(i = 0; i < sizeof(float); ++i)
-  {
-   Serial.write(float_to_bytes.output[i]); 
-   chksum += float_to_bytes.output[i];
-  }
-  chksum += 0x75;
-  Serial.write(chksum);  
-}
-
 void loop() {
     if(get_data)
     {
@@ -251,12 +253,22 @@ void loop() {
       lsm.getEvent(&accel, &mag, &gyro, &temp); 
       get_data = 0U;
       PORTB ^= (1<<0);
-    
-      float a_accel = (float)57.30*accel.acceleration.y/(float)9.810;
-      float accel_lpf = (float)0.239*a_accel + (float)0.761*prev_accel;
-      angle = (float)0.98*(angle + ((float)CONTROL_DT*gyro.gyro.z)) + (float)0.02*accel_lpf;
+
+      float accel_lpf = (float)0.239*accel.acceleration.y + (float)0.761*prev_accel;
+      float angle_accel = (float)57.30*accel.acceleration.y/(float)9.810;
+      angle = (float)0.98*(angle + ((float)CONTROL_DT*gyro.gyro.z)) + (float)0.02*angle_accel;
+
+      angle_err_integral = angle_err_integral + angle*(float)CONTROL_DT;
+      if(angle_err_integral > 50.0f)
+      {
+        angle_err_integral = 50.0f;
+      }
+      if(angle_err_integral < -50.0f)
+      {
+        angle_err_integral = -50.0f;
+      }
       
-      int16_t motor_drive_val = (int16_t)((float)230.0*angle - (float)0.0*gyro.gyro.z);
+      int16_t motor_drive_val = (int16_t)((float)225.0*angle + (float)6.0*angle_err_integral - (float)0.1*gyro.gyro.z);
       
       prev_accel = accel_lpf;
     
@@ -274,7 +286,7 @@ void loop() {
     
       if(debug_ticks > 9U)
       {
-        #if !defined RUNTIME_VERBOSE_OUTPUT_1
+        #if !defined RUNTIME_VERBOSE_OUTPUT_1 && !defined RUNTIME_VERBOSE_OUTPUT_2
           send_binary_telemetry_item(angle);
         #endif
           #ifdef RUNTIME_VERBOSE_OUTPUT_1 

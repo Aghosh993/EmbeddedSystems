@@ -19,9 +19,11 @@ time_window	= 100;
 
 ax = plt.axes(xlim=(0,time_window),ylim=(-1*rate_limits,rate_limits))
 line, = ax.plot([], [], '-')
+line2, = ax.plot([], [], '-')
 
 serialPort = serial.Serial();
-data_buf = [];
+data_buf = []
+data_buf2 = []
 x_vals = np.arange(0,time_window,1); #Fixed X-values
 
 def init_port():
@@ -61,21 +63,26 @@ def get_data():
 		else:
 			roll_val = struct.unpack('f', in_bytes)[0];
 			data_buf[time_window-1] = roll_val; #Fill in the last (latest) element of data buffer
-			print repr(roll_val);
+			# print repr(roll_val);
 
 def init():
+	global line
+	# global line2
 
 	line.set_data([],[])#x_vals, data_buf)
+	# line2.set_data([],[])
 	return line,
 
 def update_fig(i):
 	global x_vals
 	global data_buf
+	global data_buf2
 
 	get_data()
 
 	# Refresh the plot with recalculated points:
 	line.set_data(x_vals,data_buf)
+	# line2.set_data(x_vals,data_buf2)
 	return line,
 
 def main():
