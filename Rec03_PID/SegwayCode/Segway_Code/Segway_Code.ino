@@ -10,7 +10,9 @@
  */
 ////////////////////////////////////////////////////////////////////////////////
 
-//#define RUNTIME_VERBOSE_OUTPUT  1
+//#define RUNTIME_VERBOSE_OUTPUT_1  1
+//#define RUNTIME_VERBOSE_OUTPUT_2  1
+
 #define CONTROL_DT 0.01 // In seconds
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -140,6 +142,7 @@ sensors_event_t accel, mag, gyro, temp;
 
 volatile uint8_t get_data;
 volatile float angle;
+volatile float prev_accel;
 
 volatile uint8_t debug_ticks;
 
@@ -186,26 +189,59 @@ int init_imu(void)
 void setup() {
   cli(); // Globally disable interrupts on the AVR
 
+  /*
+   * Initialize global variables:
+   */
   get_data = 0U;
   angle = 0.0f;
   debug_ticks = 0U;
-  
-  Serial.begin(9600);
-  
+  prev_accel = 0.0f;
+
+  // Start Serial Port comms at 115200 baud, with default 8n1 mode:
+  Serial.begin(115200);
+
+  // Set up all Arduino timer and GPIO resources for driving the H-bridge:
   setup_motor_control_io();
 
+  // Set up a timebase for the primary timer executive for event scheduling:
   init_timer0_timebase();
 
+  // Initialize motors to stop:
   drive_motors(0, DIR_REV,
                 0, DIR_FWD);
-  
-  DDRB |= (1<<0); // Turn PB0 (Digital Pin 8 on Arduino) into an OUTPUT for debug purposes
 
-  sei(); // Globally enable interrupts
+  // Turn PB0 (Digital Pin 8 on Arduino) into an OUTPUT for debug purposes:
+  DDRB |= (1<<0);
 
+  // Globally enable interrupts:
+  sei();
+
+  // Set up LSM9DS0 IMU board using Adafruit library calls:
   init_imu();
 
+  // Set I2C baud rate to 400 kHz to maximize IMU data rate:
   Wire.setClock(400000L);
+}
+
+void send_binary_telemetry_item(float value)
+{
+  union {
+    float input;
+    uint8_t output[sizeof(float)];
+  } float_to_bytes;
+  float_to_bytes.input = value;
+  Serial.write((uint8_t)'s');
+  Serial.write((uint8_t)0U);
+  Serial.write((uint8_t)4U);
+  uint8_t i = 0U;
+  uint8_t chksum = 0U;
+  for(i = 0; i < sizeof(float); ++i)
+  {
+   Serial.write(float_to_bytes.output[i]); 
+   chksum += float_to_bytes.output[i];
+  }
+  chksum += 0x75;
+  Serial.write(chksum);  
 }
 
 void loop() {
@@ -215,33 +251,41 @@ void loop() {
       lsm.getEvent(&accel, &mag, &gyro, &temp); 
       get_data = 0U;
       PORTB ^= (1<<0);
-    }
-
-  float a_accel = (float)57.30*accel.acceleration.y/(float)9.810;
-  angle = (float)0.98*(angle + ((float)CONTROL_DT*gyro.gyro.z)) + (float)0.02*a_accel;
-  int16_t motor_drive_val = (int16_t)((float)50.0 * angle);
-
-  if(motor_drive_val < 0)
-  {
-    motor_drive_val *= -1;
-    drive_motors(motor_drive_val, DIR_FWD,
-                  motor_drive_val, DIR_FWD);
-  }
-  else
-  {
-    drive_motors(motor_drive_val, DIR_REV,
-                  motor_drive_val, DIR_REV);    
-  }
-
-  if(debug_ticks > 9U)
-  {
-    Serial.println(angle);
-    debug_ticks = 0U;
-  }
     
-  #ifdef RUNTIME_VERBOSE_OUTPUT
+      float a_accel = (float)57.30*accel.acceleration.y/(float)9.810;
+      float accel_lpf = (float)0.239*a_accel + (float)0.761*prev_accel;
+      angle = (float)0.98*(angle + ((float)CONTROL_DT*gyro.gyro.z)) + (float)0.02*accel_lpf;
+      
+      int16_t motor_drive_val = (int16_t)((float)230.0*angle - (float)0.0*gyro.gyro.z);
+      
+      prev_accel = accel_lpf;
+    
+      if(motor_drive_val < 0)
+      {
+        motor_drive_val *= -1;
+        drive_motors(motor_drive_val, DIR_FWD,
+                      motor_drive_val, DIR_FWD);
+      }
+      else
+      {
+        drive_motors(motor_drive_val, DIR_REV,
+                      motor_drive_val, DIR_REV);    
+      }
+    
+      if(debug_ticks > 9U)
+      {
+        #if !defined RUNTIME_VERBOSE_OUTPUT_1
+          send_binary_telemetry_item(angle);
+        #endif
+          #ifdef RUNTIME_VERBOSE_OUTPUT_1 
+            Serial.println(angle);
+          #endif
+          debug_ticks = 0U;
+      }
+    }  
+  #ifdef RUNTIME_VERBOSE_OUTPUT_2
   
-    // print out accelleration data
+    // print out acceleration data
     Serial.print("Accel X: "); Serial.print(accel.acceleration.x); Serial.print(" ");
     Serial.print("  \tY: "); Serial.print(accel.acceleration.y);       Serial.print(" ");
     Serial.print("  \tZ: "); Serial.print(accel.acceleration.z);     Serial.println("  \tm/s^2");
