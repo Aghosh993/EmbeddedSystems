@@ -11,9 +11,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 //#define RUNTIME_VERBOSE_OUTPUT_1  1
-//#define RUNTIME_VERBOSE_OUTPUT_2  1/
+//#define RUNTIME_VERBOSE_OUTPUT_2  1
 
-#define CONTROL_DT 0.01 // In seconds
+#define CONTROL_DT 0.005 // In seconds
 
 ////////////////////////////////////////////////////////////////////////////////
 /*
@@ -52,7 +52,7 @@ void init_timer0_timebase()
                         // CTC mode. Compare on OCR2A
   TCCR2B = (1<<CS22) | (1<<CS21) | (1<<CS20); // Prescaler=1024
 
-  OCR2A = 156;
+  OCR2A = 77;//156;
 
   TIMSK2 |= (1<<OCIE2A);  
 }
@@ -145,6 +145,11 @@ volatile float angle;
 volatile float prev_accel;
 volatile float angle_err_integral;
 
+volatile float lastAngle;
+
+float gyro_z_bias;
+float accel_y_bias;
+
 volatile uint8_t debug_ticks;
 
 void configureSensor(void)
@@ -219,6 +224,7 @@ void setup() {
   debug_ticks = 0U;
   prev_accel = 0.0f;
   angle_err_integral = 0.0f;
+  lastAngle = 0.0f;
 
   // Start Serial Port comms at 115200 baud, with default 8n1 mode:
   Serial.begin(115200);
@@ -244,9 +250,29 @@ void setup() {
 
   // Set I2C baud rate to 400 kHz to maximize IMU data rate:
   Wire.setClock(400000L);
+
+  int i = 0;
+
+  gyro_z_bias = 0.0f;
+  for(i = 0; i < 250; ++i)
+  {
+    lsm.getEvent(&accel, &mag, &gyro, &temp);
+    gyro_z_bias +=  gyro.gyro.z;
+  }
+  gyro_z_bias = gyro_z_bias / (float)250;
+
+  accel_y_bias = 0.0f;
+  for(i = 0; i < 250; ++i)
+  {
+    lsm.getEvent(&accel, &mag, &gyro, &temp);
+    accel_y_bias +=  accel.acceleration.y;
+  }
+  accel_y_bias = accel_y_bias / (float)250;
 }
 
 void loop() {
+    int16_t motor_drive_val = 0;
+    
     if(get_data)
     {
       /* Get a new sensor event */ 
@@ -254,40 +280,53 @@ void loop() {
       get_data = 0U;
       PORTB ^= (1<<0);
 
-      float accel_lpf = (float)0.239*accel.acceleration.y + (float)0.761*prev_accel;
-      float angle_accel = (float)57.30*accel.acceleration.y/(float)9.810;
-      angle = (float)0.98*(angle + ((float)CONTROL_DT*gyro.gyro.z)) + (float)0.02*angle_accel;
+      //float accel_lpf = (float)0.239*accel.acceleration.y + (float)0.761*prev_accel;
+      float accel_lpf = (float)0.06*(accel.acceleration.y-accel_y_bias) + (float)0.94*prev_accel;
+      
+//      float angle_accel = (float)57.30*accel.acceleration.y/(float)9.810;
+      float angle_accel = (float)57.30*asin(accel_lpf/(float)9.810);
+      
+      angle = (float)0.98*(angle + ((float)CONTROL_DT*(gyro.gyro.z-gyro_z_bias))) + (float)0.02*angle_accel;
 
       angle_err_integral = angle_err_integral + angle*(float)CONTROL_DT;
-      if(angle_err_integral > 50.0f)
+      if(angle_err_integral > 0.2f)
       {
-        angle_err_integral = 50.0f;
+        angle_err_integral = 0.2f;
       }
-      if(angle_err_integral < -50.0f)
+      if(angle_err_integral < -0.2f)
       {
-        angle_err_integral = -50.0f;
+        angle_err_integral = -0.2f;
       }
-      
-      int16_t motor_drive_val = (int16_t)((float)225.0*angle + (float)6.0*angle_err_integral - (float)0.1*gyro.gyro.z);
+
+      if(angle < (float)1.0 || angle > (float)-1.0)
+      {
+        motor_drive_val = (int16_t)((float)170.0*angle + (float)180.0*angle_err_integral + (float)6*(angle-lastAngle));
+      }
+      else
+      {
+        motor_drive_val = (int16_t)((float)350.0*angle + (float)350.0*angle_err_integral + (float)6*(angle-lastAngle)); 
+      }
+//      motor_drive_val = (int16_t)((float)250.0*angle + (float)150.0*angle_err_integral + (float)0.0*gyro.gyro.z);//(angle-lastAngle));
       
       prev_accel = accel_lpf;
+      lastAngle = angle;
     
       if(motor_drive_val < 0)
       {
         motor_drive_val *= -1;
-        drive_motors(motor_drive_val, DIR_FWD,
-                      motor_drive_val, DIR_FWD);
+        drive_motors((uint16_t)motor_drive_val, DIR_FWD,
+                      (uint16_t)motor_drive_val, DIR_FWD);
       }
       else
       {
-        drive_motors(motor_drive_val, DIR_REV,
-                      motor_drive_val, DIR_REV);    
+        drive_motors((uint16_t)motor_drive_val, DIR_REV,
+                      (uint16_t)motor_drive_val, DIR_REV);    
       }
     
       if(debug_ticks > 9U)
       {
         #if !defined RUNTIME_VERBOSE_OUTPUT_1 && !defined RUNTIME_VERBOSE_OUTPUT_2
-          send_binary_telemetry_item(angle);
+          send_binary_telemetry_item(angle_accel);
         #endif
           #ifdef RUNTIME_VERBOSE_OUTPUT_1 
             Serial.println(angle);

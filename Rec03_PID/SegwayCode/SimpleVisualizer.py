@@ -63,7 +63,7 @@ def get_data():
 		else:
 			roll_val = struct.unpack('f', in_bytes)[0];
 			data_buf[time_window-1] = roll_val; #Fill in the last (latest) element of data buffer
-			# print repr(roll_val);
+			print repr(roll_val);
 
 def init():
 	global line
